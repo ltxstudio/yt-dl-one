@@ -24,9 +24,9 @@ export async function GET(req: Request) {
       quality,
     });
 
-    return new NextResponse(stream as any, { headers });
-  } catch (error) {
+    // TypeScript requires a proper type for the stream. Use `NodeJS.ReadableStream`.
+    return new NextResponse(stream as unknown as ReadableStream, { headers });
+  } catch {
     return NextResponse.json({ error: "Failed to process the video" }, { status: 500 });
   }
 }
-
