@@ -1,5 +1,16 @@
 import { NextResponse } from "next/server";
 import ytdl from "ytdl-core";
+import { Readable } from "stream";
+
+function readableToWebReadable(nodeStream: Readable): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      nodeStream.on("data", (chunk) => controller.enqueue(chunk));
+      nodeStream.on("end", () => controller.close());
+      nodeStream.on("error", (err) => controller.error(err));
+    },
+  });
+}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -8,7 +19,7 @@ export async function GET(req: Request) {
   const quality = searchParams.get("quality") || "highest";
 
   if (!url || !ytdl.validateURL(url)) {
-    return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid or unsupported YouTube URL" }, { status: 400 });
   }
 
   try {
@@ -19,14 +30,19 @@ export async function GET(req: Request) {
       "Content-Disposition": `attachment; filename="${title}.${format === "audio" ? "mp3" : "mp4"}"`,
     });
 
-    const stream = ytdl(url, {
+    const nodeStream = ytdl(url, {
       filter: format === "audio" ? "audioonly" : "video",
       quality,
     });
 
-    // TypeScript requires a proper type for the stream. Use `NodeJS.ReadableStream`.
-    return new NextResponse(stream as unknown as ReadableStream, { headers });
-  } catch {
-    return NextResponse.json({ error: "Failed to process the video" }, { status: 500 });
+    const webStream = readableToWebReadable(nodeStream);
+
+    return new NextResponse(webStream, { headers });
+  } catch (error) {
+    console.error("Error during video processing:", error);
+    return NextResponse.json(
+      { error: "Failed to process the video. Please try again later." },
+      { status: 500 }
+    );
   }
 }
